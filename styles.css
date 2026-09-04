@@ -74,7 +74,7 @@ h1, h2, h3.display {
 }
 
 .brand { display: inline-block; line-height: 0; flex-shrink: 0; }
-.brand img { height: 140px; width: auto; max-width: none; }
+.brand img { height: 112px; width: auto; max-width: none; }
 
 .main-nav {
   display: flex;
@@ -597,7 +597,7 @@ h1, h2, h3.display {
   :root { --pad: 24px; }
 
   .site-header .wrap { min-height: 110px; }
-  .brand img { height: 80px; }
+  .brand img { height: 64px; }
 
   .nav-toggle { display: block; }
   .main-nav {
