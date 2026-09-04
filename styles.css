@@ -73,8 +73,8 @@ h1, h2, h3.display {
   gap: 24px;
 }
 
-.brand { display: inline-block; line-height: 0; }
-.brand img { height: 112px; width: auto; }
+.brand { display: inline-block; line-height: 0; flex-shrink: 0; }
+.brand img { height: 140px; width: auto; max-width: none; }
 
 .main-nav {
   display: flex;
@@ -596,8 +596,8 @@ h1, h2, h3.display {
 @media (max-width: 680px) {
   :root { --pad: 24px; }
 
-  .site-header .wrap { min-height: 100px; }
-  .brand img { height: 64px; }
+  .site-header .wrap { min-height: 110px; }
+  .brand img { height: 80px; }
 
   .nav-toggle { display: block; }
   .main-nav {
