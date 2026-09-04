@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Building Domain-Driven Entities with Temporal Workflows — Tensor7 Blog</title>
+  <meta name="description" content="How to build, test, and run DDD Entities using Temporal Workflows and the Java SDK, with a companion GitHub repository.">
+  <link rel="icon" type="image/png" href="../images/tensor7-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600&family=Wix+Madefor+Text:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="../index.html" aria-label="Tensor7 home">
+        <img src="../images/tensor7-logo.png" alt="Tensor7 logo">
+      </a>
+      <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="main-nav">
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="main-nav" id="main-nav" aria-label="Main navigation">
+        <a href="../index.html">Home</a>
+        <a href="index.html">Blog</a>
+        <a href="../index.html#contact">Contact</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <article class="article">
+      <div class="wrap">
+        <div class="article-inner">
+          <a class="back-link" href="index.html">&larr; All posts</a>
+          <h1>Building Domain-Driven Entities with Temporal Workflows</h1>
+          <p class="post-meta">Michael Read &middot; Jun 9, 2025 &middot; 11 min read</p>
+
+          <h2>Introduction</h2>
+
+          <p>
+            This blog post, along with its companion
+            <a href="https://github.com/michael-read/entities-with-temporal-demo">GitHub repository</a>,
+            demonstrates how to build, test, and run Entities using Temporal
+            Workflows and the Java SDK.
+          </p>
+
+          <p>
+            Our demonstration use case for this blog is a streaming data pipeline
+            that collects user purchase events and simply aggregates purchase
+            totals and total amount spent by each user in a unique User Entity.
+          </p>
+
+          <h2>Prerequisites</h2>
+
+          <p>This post assumes you have:</p>
+          <ul>
+            <li>Familiarity with Java 21+</li>
+            <li>Basic understanding of Domain-Driven Design concepts</li>
+            <li>Some experience with event-driven architectures</li>
+            <li>Access to a Temporal Cluster (or ability to run Temporal locally)</li>
+          </ul>
+
+          <h2>What are Entities?</h2>
+
+          <p>
+            In Domain-Driven Design (DDD), an Entity is a fundamental concept for
+            modeling business logic. Unlike regular programming objects, Entities
+            are defined by their unique identity and carefully controlled changes.
+            They represent core business rules while remaining independent of
+            databases, user interfaces, and external frameworks &mdash; making
+            them a cornerstone of modern software architecture.
+          </p>
+
+          <p>
+            Entities are great for tracking traditional business resources such as
+            a Customer, Order, or Account. However, in the era of IoT (Internet of
+            Things), Entities are indispensable for bridging the physical and
+            digital worlds. They shine where physical objects require a persistent
+            unique digital identity that evolves over time.
+          </p>
+
+          <p>Key IoT Entity use cases include:</p>
+
+          <ul>
+            <li>
+              <strong>Digital Twins and State Synchronization</strong> &mdash;
+              digital representations of physical assets such as vehicles, cloud
+              infrastructure, stand-by batteries, generators, and phones. They
+              synchronize real-time sensor data &mdash; temperature, location,
+              health, power level, load &mdash; with the digital model, accurately
+              reflecting the state of the physical world. This "single source of
+              truth" centralizes representation of the device state, eliminates
+              data silos across systems, and provides a consistent view accessible
+              to all stakeholders. Commands can also be sent from the Entity to
+              the physical asset to trigger actuators &mdash; open a window, or
+              shut off power in an emergency.
+            </li>
+            <li>
+              <strong>Complex Device Lifecycle Management</strong> &mdash; IoT
+              devices often operate for years. Entities encapsulate their entire
+              lifecycle logic through distinct phases such as provisioned, active,
+              maintenance, and decommissioned. For example, an Entity can enforce
+              business rules such as "a device cannot receive software updates if
+              it's under heavy usage, has been decommissioned, or it's during
+              certain times of the day."
+            </li>
+            <li>
+              <strong>Encapsulating Domain Logic and Safety Invariants</strong>
+              &mdash; Entities are ideal for housing critical business logic and
+              safety standards close to the data. For example, a battery power
+              supply Entity could notify authorities if the temperature sensor
+              reads above a certain safety threshold.
+            </li>
+          </ul>
+
+          <h2>Why Temporal?</h2>
+
+          <p>
+            Temporal Workflows provide simple, powerful tools for creating
+            resilient and scalable systems. Combined with Entities, they create an
+            ideal foundation for building robust business applications.
+          </p>
+
+          <p>Temporal's primitives align almost directly with DDD's concepts for Entity implementation.</p>
+
+          <h3>Temporal / DDD Alignment</h3>
+
+          <p><strong>Workflow ID &harr; Entity Identity</strong></p>
+          <p>
+            A workflow's stable ID provides the same uniqueness guarantees that
+            traditional entity identities offer. Rather than maintaining separate
+            identity management, your running workflow serves directly as the
+            entity instance. Continue-As-New provides this simplification, which
+            we'll discuss in detail below.
+          </p>
+
+          <p><strong>Signals and Updates &harr; Command Methods</strong></p>
+          <p>
+            Both provide controlled entry points for state mutations. Temporal's
+            Update methods can validate and reject invalid transitions before
+            applying changes, mirroring how an aggregate protects its invariants.
+          </p>
+
+          <p><strong>Queries &harr; Query Methods</strong></p>
+          <p>
+            Both queries and query methods enable state inspection without
+            mutation. This inherent separation between read and write operations
+            means CQRS emerges organically from the workflow design rather than
+            being artificially imposed.
+          </p>
+          <p>
+            For context: Command Query Responsibility Segregation (CQRS) is an
+            architectural pattern that divides an application's operations into
+            queries (reads) and commands (writes). With Temporal workflows, this
+            separation comes naturally.
+          </p>
+
+          <p><strong>Durable Execution &harr; Persistence Ignorance</strong></p>
+          <p>
+            The Entity's state lives as simple in-memory fields while the platform
+            handles persistence through event-sourced replay. This makes DDD's
+            "the model doesn't know about the database" principle operationally
+            real, not just theoretical.
+          </p>
+
+          <p><strong>Single-Threaded Execution &harr; Aggregate Consistency Boundary</strong></p>
+          <p>
+            Workflows process commands sequentially, providing serializable
+            consistency without locks or optimistic concurrency patterns. This
+            eliminates concurrency anomalies at the infrastructure level.
+          </p>
+
+          <p><strong>The Workflow/Activity Split &harr; Architecture by Design</strong></p>
+          <p>
+            Temporal workflows create a clean architectural boundary that mirrors
+            the domain/adapter separation found in hexagonal architecture &mdash;
+            but with a crucial difference: the runtime enforces it. Here's how it
+            works:
+          </p>
+          <ul>
+            <li>Workflows contain pure, deterministic business logic</li>
+            <li>Activities handle everything external and unpredictable &mdash; web service calls, I/O operations, database queries</li>
+          </ul>
+          <p>
+            This isn't just a convention developers can ignore. The system
+            prevents you from mixing these concerns, giving you architectural
+            discipline without relying on team agreements or code reviews.
+          </p>
+
+          <h2>Traits of a Temporal Entity Workflow</h2>
+
+          <h3>Entity State</h3>
+          <p>
+            Your entity's state should reflect your specific use case and
+            requirements. However, there's one universal rule: keep all state in a
+            single, JSON-serializable object.
+          </p>
+
+          <h3>Java Implementation</h3>
+          <p>In Java, you have two main options:</p>
+          <ul>
+            <li>Records (recommended)</li>
+            <li>Classes</li>
+          </ul>
+          <p>
+            I strongly prefer Records because they're immutable by design and
+            naturally encourage putting business logic directly into the state
+            object itself.
+          </p>
+
+          <h3>Handling Activities</h3>
+          <p>When you need to call an Activity, follow this pattern:</p>
+          <ul>
+            <li>Call the Activity from your workflow's signal method</li>
+            <li>Pass the result into your state object</li>
+          </ul>
+          <p>This keeps your state management clean and predictable.</p>
+
+          <h3>Event History Limits</h3>
+          <p>
+            Temporal records each workflow's state change as events in an Event
+            History. This history enables Durable Execution by allowing crash
+            recovery: event history is replayed to reconstruct state, and then
+            progress continues. For performance reasons, Temporal enforces limits
+            on event history size and item count.
+          </p>
+
+          <h3>Entity Lifecycle</h3>
+          <p>
+            Most Temporal workflows have a beginning and an end, much like a
+            project does. Unlike a project, most entities have a beginning and
+            don't ever end. Of course it depends on the domain, and there are some
+            use cases where entities have short lifecycles. You need to be able to
+            support both.
+          </p>
+          <p>
+            Given Temporal's history limits and the fact that entities often run
+            indefinitely, you'll need a strategy for when you approach these
+            limits. That path forward is Temporal's Continue-As-New feature.
+            Continue-As-New lets a workflow close successfully and creates a new
+            copy while giving developers the ability to maintain the current
+            state.
+          </p>
+          <p>
+            Think of Continue-As-New as a controlled restart: your workflow
+            completes successfully, preserves its state, and immediately begins a
+            fresh instance &mdash; preventing history limits from halting
+            execution. Temporal even provides a method to check when it thinks
+            you're running close to a history limit:
+            <code>Workflow.getInfo().isContinueAsNewSuggested()</code>.
+          </p>
+          <p>
+            Being able to pass your Entity's current state into the new Entity is
+            a key consideration when creating your workflow through the Workflow
+            Method. More on this below.
+          </p>
+
+          <h3>The Primary Loop</h3>
+          <p>
+            The Entity workflow begins when the Workflow Method is called, and the
+            workflow ends when the Workflow Method ends. To keep your workflow
+            running for the long haul you'll need a primary loop that can execute
+            the Continue-As-New process when needed with your current state, as
+            well as optionally end if needed. You don't want your primary loop to
+            run uncontrollably, so you'll want to pause for a time on each
+            iteration. <code>Workflow.await()</code> is your friend in this case.
+            For example:
+          </p>
+
+<pre><code>do {
+    Workflow.await(maxAwaitTime, () -&gt; exitRequested);
+} while (!exitRequested &amp;&amp; !shouldContinueAsNew());</code></pre>
+
+          <h3>Communicating with your Entity</h3>
+          <p>
+            The Entity workflow accepts commands to update state through
+            Temporal's Signal methods. These methods don't return anything and run
+            asynchronously. You can have as many Signal methods as your use case
+            calls for.
+          </p>
+          <p>
+            For the read side, Temporal's Query methods are used. Because these
+            methods block, it's usually best to just return information that can
+            be derived from the Entity's state.
+          </p>
+
+          <h2>Error Handling</h2>
+
+          <p>
+            One of Temporal's greatest strengths is how it handles failures and
+            recovery &mdash; almost entirely automatically. This section explains
+            how error handling works and what you need to do as a developer.
+          </p>
+
+          <h3>Workflow Error Handling</h3>
+          <p>Temporal's error handling relies on two key principles:</p>
+          <ul>
+            <li>
+              <strong>Deterministic execution</strong> &mdash; workflow code must
+              produce the exact same output given the same inputs and initial
+              state, regardless of how many times it executes. This determinism
+              enables reliable recovery.
+            </li>
+            <li>
+              <strong>Event replay</strong> &mdash; when a failure occurs,
+              Temporal reconstructs the workflow's state by replaying its event
+              history, then resumes execution from the point of failure.
+            </li>
+          </ul>
+          <p>
+            This means you rarely need to write explicit error handling code for
+            your workflow logic. Temporal handles the heavy lifting automatically:
+            the workflow recovers seamlessly from failures, state is restored
+            through event replay, and execution resumes without manual
+            intervention.
+          </p>
+
+          <h3>Developer Responsibilities</h3>
+          <p>While Temporal manages most recovery, your job is to design workflows that support it:</p>
+          <ul>
+            <li><strong>Maintain determinism</strong> &mdash; keep all randomness, external I/O, and non-repeatable operations out of workflow code</li>
+            <li><strong>Design idempotent signals</strong> &mdash; since signals may be processed multiple times during recovery, your entity state transitions should be safe to repeat</li>
+            <li><strong>Choose appropriate retry policies</strong> &mdash; configure retry behavior at the workflow and activity level based on your failure modes</li>
+          </ul>
+          <p>
+            The goal isn't to prevent all errors &mdash; it's to design workflows
+            that recover gracefully when errors occur.
+          </p>
+
+          <h3>Activity Error Handling</h3>
+          <p>
+            Activities require slightly different error handling considerations,
+            since they execute outside the workflow's deterministic context.
+          </p>
+          <p>
+            Successful activities have their results journaled by Temporal and
+            reused during recovery &mdash; no re-execution needed. Failed
+            activities must be retried. Temporal provides configurable retry
+            policies, giving you control over how your activities respond to
+            transient failures while keeping the workflow logic clean and focused
+            on business rules.
+          </p>
+
+          <h2>Challenges of using Temporal to build Entities</h2>
+
+          <p>
+            Building entities with Temporal requires careful design choices. The
+            platform is commonly used for orchestrating processes and sagas, so
+            using it for entities means working with some specific considerations:
+          </p>
+
+          <ul>
+            <li><strong>History Management</strong> &mdash; long-running entities accumulate event history. Implement Continue-As-New proactively to manage history growth and stay within Temporal's limits.</li>
+            <li><strong>Deterministic Logic</strong> &mdash; entity domain logic must be deterministic. External I/O operations belong in activities, keeping the workflow code pure and replayable.</li>
+            <li><strong>Cross-Entity Queries</strong> &mdash; Temporal excels at representing a single Entity's state and behavior. For queries across multiple entities &mdash; like "find all customers in state X" &mdash; you'll need to project data into a separate read model.</li>
+            <li><strong>Scale and Cost</strong> &mdash; managing large populations of long-lived entities introduces real scale and cost considerations. Design your Entity boundaries and lifecycle carefully to address these upfront.</li>
+          </ul>
+
+          <p>These challenges aren't obstacles &mdash; they're design decisions that shape how you structure your system.</p>
+
+          <h2>Building your Entity</h2>
+
+          <h3>Start with the Interface</h3>
+          <p>
+            When working with Temporal's Java SDK every workflow starts with an
+            annotated interface. For example, our <code>UserEntityWorkflow</code>
+            interface looks like this:
+          </p>
+
+<pre><code>@WorkflowInterface
+public interface UserEntityWorkflow {
+    @WorkflowMethod
+    String create(UserInput input);
+
+    @SignalMethod
+    void purchaseEvent(UserPurchaseEvent name);
+
+    @SignalMethod
+    void exit();
+
+    @QueryMethod
+    UserState getEntity();
+}</code></pre>
+
+          <p>
+            <strong><code>@WorkflowInterface</code></strong> simply tags our
+            interface as a Temporal workflow interface.
+          </p>
+
+          <p>
+            <strong><code>@WorkflowMethod String create(UserInput input);</code></strong>
+            is our workflow method that is called by Temporal when the Entity
+            workflow starts. It returns a simple string when the workflow
+            finishes. The <code>UserInput</code> provides the following structure:
+          </p>
+
+<pre><code>public record UserInput(
+        String userId,
+        Optional&lt;UserState&gt; userState,
+        boolean testContinueAsNew
+) {}</code></pre>
+
+          <p>
+            As you can see we're passing in the <code>userId</code>, an optional
+            <code>UserState</code> (passed in during invocation when checkpointing
+            our workflow with Temporal's Continue-As-New method), and finally a
+            boolean to declare if we're testing the Continue-As-New functionality.
+          </p>
+
+          <p>
+            <strong><code>@SignalMethod void purchaseEvent(UserPurchaseEvent name);</code></strong>
+            declares our method to receive an incoming
+            <code>UserPurchaseEvent</code>. Signal methods are asynchronous
+            &mdash; they return immediately without waiting for the Signal to be
+            processed. This is ideal for fire-and-forget scenarios such as our
+            streaming data pipeline use case. If you need to update a workflow's
+            state and verify the result, use a synchronous
+            <code>@UpdateMethod</code> instead. Update methods block until the
+            operation completes and return a result to the caller.
+          </p>
+
+          <p>
+            <strong><code>@SignalMethod void exit();</code></strong> causes the
+            workflow to end. While we don't need it for our use case, we're
+            including it here because we need it for testing. More on that below.
+          </p>
+
+          <p>
+            <strong><code>@QueryMethod UserState getEntity();</code></strong>
+            simply returns the current state of our Entity.
+          </p>
+
+          <h3>Constructor for configuration</h3>
+          <p>
+            Constructors aren't required by Temporal, however you can provide one
+            for pulling in configuration settings if needed &mdash; see the
+            <a href="https://github.com/michael-read/entities-with-temporal-demo/blob/main/user-entity-workflow/src/main/java/ai/tensor7/UserEntityWorkflowImpl.java#L27-L49">constructor in UserEntityWorkflowImpl.java</a>.
+            Here we're pulling in our polling interval from the properties file as
+            a default and then overriding the setting from an environment variable
+            if available.
+          </p>
+
+          <h3>Working with state</h3>
+          <p>
+            Our state is represented as a Java object
+            (<a href="https://github.com/michael-read/entities-with-temporal-demo/blob/main/user-entity-workflow/src/main/java/ai/tensor7/model/UserState.java#L6-L36">UserState.java</a>)
+            and contains an <code>empty()</code> method and business logic. We're
+            careful with mutation by always returning a completely new version of
+            state.
+          </p>
+          <p>
+            Additionally, because our Entity is working as part of a streaming
+            data pipeline we've implemented idempotence by ignoring messages seen
+            recently. This is done by capturing and maintaining a simple lookback
+            window of message IDs that have been recently processed. The size of
+            the window is based on trade-offs between the total size of the state
+            and how often a given user makes a purchase. In this example fourteen
+            seems about right.
+          </p>
+
+          <h3>The Query method</h3>
+          <p>
+            Here we simply return the current state. In this case, the state must
+            be serializable as JSON.
+          </p>
+
+          <h3>The exit method</h3>
+          <p>
+            The exit method simply flips a flag causing the workflow to end by
+            stopping the primary workflow loop. While we don't need it for our use
+            case, we need it for unit tests.
+          </p>
+
+          <h2>Testing the workflow</h2>
+
+          <p>
+            We're using JUnit 5 (Jupiter) with Temporal's
+            <code>TestWorkflowExtension</code> and
+            <code>TestWorkflowEnvironment</code>, which allow us to test all
+            aspects of our Entity's workflow. Here we register the Temporal
+            <code>TestWorkflowExtension</code>:
+          </p>
+
+<pre><code>@RegisterExtension
+public static final
+    TestWorkflowExtension testWorkflowExtension =
+        TestWorkflowExtension.newBuilder()
+                .setWorkflowTypes(UserEntityWorkflowImpl.class)
+                .setDoNotStart(true)
+                .build();</code></pre>
+
+          <p>
+            By using this extension, each unit test method is automatically
+            injected with the <code>TestWorkflowEnvironment</code>, a Worker, and
+            the <code>UserEntityWorkflow</code> that are needed for testing.
+          </p>
+
+          <p>Then with each unit test we start the <code>TestWorkflowEnvironment</code> and execute the following tests:</p>
+
+          <ul>
+            <li><strong>startUserEntityWorkflowAndExit</strong> &mdash; starts the workflow, and simply shuts it down.</li>
+            <li><strong>testUserEntityWorkflowSignals</strong> &mdash; starts the workflow, sends some purchase events, shuts it down, and verifies the state.</li>
+            <li><strong>testUserEntityWorkflowIgnoreDups</strong> &mdash; starts the workflow, sends some purchase events plus some duplicates, shuts it down, and verifies that the state doesn't include the duplicates.</li>
+            <li><strong>testUserEntityWorkflowStartAsNew</strong> &mdash; starts the workflow, sends ten purchase events, waits for a new workflow to start, and verifies the state. When starting the workflow we send the test flag in the <code>UserInput</code> that sets the max events to seven, causing the workflow to checkpoint and start a new instance.</li>
+          </ul>
+
+          <p>
+            You can see all the tests directly in
+            <a href="https://github.com/michael-read/entities-with-temporal-demo/blob/main/user-entity-workflow/src/test/java/ai/tensor7/UserEntityWorkflowTest.java">GitHub here</a>.
+          </p>
+
+          <p>
+            A useful testing pattern is to call <code>workflow.exit()</code>
+            before checking test results. This guarantees all pending Signals have
+            been processed before you verify the workflow's behavior. Since the
+            state remains available after stopping, you can confidently confirm
+            the expected outcome.
+          </p>
+
+          <h2>Working with the Workflow</h2>
+
+          <p>
+            Since our use case is a streaming data pipeline we're sending purchase
+            events that are consumed from a message broker, and then routed to the
+            appropriate workflow.
+          </p>
+
+          <p>
+            Given the streaming nature of our use case the consumer doesn't know
+            if the Entity workflow is already running for any given user. To solve
+            this problem our consumer leverages Temporal's Signal-With-Start
+            method, provided through an Untyped Workflow Stub.
+          </p>
+
+          <p>
+            Signal-With-Start starts a new workflow if it's not already running,
+            but sends the Signal immediately, and then calls the designated
+            Workflow Method &mdash; <code>create()</code> in our case. Since the
+            Signal method can be called prior to the <code>create()</code> method,
+            the Entity workflow needs to be properly initialized to process the
+            Signal before the workflow is officially started with the
+            <code>create()</code> call. For example:
+          </p>
+
+<pre><code>UserState userState = UserState.empty();</code></pre>
+
+          <p>
+            If the state is not properly initialized you'll see Null Pointer
+            Exceptions which would cause the workflow to fail.
+          </p>
+
+          <p>
+            In our
+            <a href="https://github.com/michael-read/entities-with-temporal-demo/blob/main/consumer/src/main/java/ai/tensor7/app/UserEventConsumer.java#L88-L115">consumer's constructor</a>
+            we wire our Temporal client to provide observability metrics for
+            Prometheus scraping, collect settings for our Entity workflow prefix
+            for the ID of the workflow, and finally the Temporal Task Queue to
+            send Signals.
+          </p>
+
+          <p>
+            As the consumer stream operates, each purchase event comes through as
+            a Protobuf payload. We parse it, create a
+            <code>UserPurchaseEvent</code>, create a <code>UserInput</code>
+            record, create an Untyped Workflow Stub, and finally call the
+            <a href="https://github.com/michael-read/entities-with-temporal-demo/blob/main/consumer/src/main/java/ai/tensor7/app/UserEventConsumer.java#L320-L344">Signal-With-Start method</a>
+            with both the <code>UserPurchaseEvent</code> and
+            <code>UserInput</code> records.
+          </p>
+
+          <p>
+            We've also provided a
+            <a href="https://github.com/michael-read/entities-with-temporal-demo/blob/main/user-entity-workflow/src/main/java/ai/tensor7/StartWithSignalExample.java">simplified example of this process</a>,
+            without observability, in GitHub.
+          </p>
+
+          <h2>Building the worker</h2>
+
+          <p>
+            The Temporal architecture requires that you provide workers to execute
+            your workflows. Workers are typically straightforward to implement.
+            Our approach is to pick up configuration from a properties file for
+            things like the Temporal Server target, HTTPS enablement, and
+            Prometheus scrape port. Environment variables can also override these
+            default settings.
+          </p>
+
+          <p>
+            Next we provide observability metrics for Prometheus scraping, create
+            the Temporal Server connection and client, start the worker, and
+            finally register the Entity's workflow implementation.
+          </p>
+
+          <h2>Conclusion</h2>
+
+          <p>
+            Building Entities with Temporal Workflows provides a powerful pattern
+            for creating resilient, long-running business logic that can survive
+            failures and scale horizontally. The combination of durable execution,
+            event history, and the Continue-As-New pattern enables you to build
+            entities that maintain state reliably over extended periods.
+          </p>
+
+          <p>Key takeaways from this approach:</p>
+
+          <ul>
+            <li><strong>Single state object</strong>: keep your Entity state in one serializable object for simplicity and consistency</li>
+            <li><strong>Immutable updates</strong>: always return new state objects rather than mutating existing ones</li>
+            <li><strong>Signal-With-Start</strong>: use this pattern to handle the uncertainty of whether a workflow already exists</li>
+            <li><strong>Checkpointing</strong>: implement Continue-As-New proactively to manage event history limits</li>
+            <li><strong>Comprehensive testing</strong>: leverage Temporal's test framework to validate all aspects of your Entity's behavior</li>
+          </ul>
+
+          <p>
+            The companion
+            <a href="https://github.com/michael-read/entities-with-temporal-demo/tree/main">GitHub repository</a>
+            provides a complete, runnable example that you can adapt for your own
+            use cases. Whether you're building event-driven microservices,
+            streaming data pipelines, or long-running business processes, this
+            pattern offers a solid foundation for resilient, maintainable code.
+          </p>
+
+          <p>
+            Ready to get started? Clone the repository, run the tests, and begin
+            building your own Temporal Entity workflows.
+          </p>
+
+          <div class="about-box">
+            <h2>About Tensor7</h2>
+            <p>
+              Tensor7 is a boutique consultancy of distributed systems experts,
+              principal engineers, data engineers, applied AI specialists, and
+              business strategists. We help organizations journey from AI
+              curiosity to highly profitable, enterprise-grade production systems
+              &mdash; covering strategy, design, prototyping, implementation,
+              evaluation, and operation. Our consultants have delivered 55+
+              systems across e-commerce, insurance, fintech, manufacturing,
+              travel, logistics, and media, with a 98% client satisfaction rate.
+            </p>
+            <p>
+              We bring the rigor of distributed systems to agentic AI &mdash;
+              because safe, reliable, and scalable are not optional.
+            </p>
+            <p>
+              Ready to explore what Temporal-powered workflows could mean for your
+              business? Reach out at
+              <a href="mailto:info@tensor7.ai">info@Tensor7.AI</a>.
+            </p>
+          </div>
+        </div>
+      </div>
+    </article>
+  </main>
+
+  <footer class="wrap">
+    <p class="copyright">&copy; <span id="year">2026</span> - Tensor7 LLC</p>
+  </footer>
+
+  <script src="../script.js"></script>
+</body>
+</html>
