@@ -434,14 +434,31 @@ public interface UserEntityWorkflow {
             simply returns the current state of our Entity.
           </p>
 
-          <h3>Constructor for configuration</h3>
+          <h3>Loading Configuration</h3>
           <p>
-            Constructors aren't required by Temporal, however you can provide one
-            for pulling in configuration settings if needed &mdash; see the
-            <a href="https://github.com/michael-read/entities-with-temporal-demo/blob/main/user-entity-workflow/src/main/java/ai/tensor7/UserEntityWorkflowImpl.java#L27-L49">constructor in UserEntityWorkflowImpl.java</a>.
-            Here we're pulling in our polling interval from the properties file as
-            a default and then overriding the setting from an environment variable
-            if available.
+            Workflows need to know how to behave — polling intervals, batch sizes, and timeouts. But there's a catch: Temporal workflows must be deterministic during replay, so you can't read configuration files directly inside workflow logic.
+          </p>
+          <p>
+            The right approach is to fetch configuration through an Activity.
+          </p>
+          <p>
+            Activities run outside the determinism sandbox, and their results are recorded in the workflow history. During any recovery or replay, Temporal uses the original recorded result rather than re-executing the Activity — ensuring your workflow always uses the same configuration values throughout its entire lifecycle.
+          </p>
+          <p>
+            You can see the implementation here:
+            <a href="https://github.com/michael-read/entities-with-temporal-demo/blob/main/user-entity-workflow/src/main/java/ai/tensor7/LocalConfigActivitiesImpl.java#L13-L43">LocalConfigActivitiesImpl.java</a>
+          </p>
+          <p>
+            The workflow simply calls this Activity at startup:
+          </p>
+          <pre><code>@Override
+public String create(UserInput input) {
+    // Get configuration from Activity - result is recorded and deterministic
+    config = localConfigActivities.getEntityConfig();
+    ...
+}</code></pre>
+          <p>
+            This keeps configuration loading safe, predictable, and fully compliant with Temporal's replay guarantees.
           </p>
 
           <h3>Working with state</h3>
