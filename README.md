@@ -12,6 +12,9 @@ replaced with static contact details.
 index.html      — one-page marketing site
 styles.css      — all styles (shared by home + blog)
 script.js       — small enhancements (mobile nav, footer year); site works without JS
+analytics.js    — Google Analytics 4 loader; the Measurement ID lives here only
+sitemap.xml     — list of public URLs for search engines (update when adding pages)
+robots.txt      — allows all crawlers, points at the sitemap
 images/         — logo, section photos, and client logos (pulled from the Wix site)
 blog/
   index.html    — blog post listing
@@ -23,8 +26,11 @@ blog/
 1. Copy an existing post (e.g. `blog/temporal-partners-with-tensor7.html`) to a
    new file in `blog/` with a URL-friendly name.
 2. Replace the `<title>`, meta description, heading, byline/date, and body.
+   In the `<head>`, also update the canonical URL, the `og:*` tags, and the
+   JSON-LD block (headline, description, author, `datePublished`, URL).
 3. Add a `post-card` entry for it at the top of the list in `blog/index.html`.
-4. Commit and push — GitHub Pages redeploys automatically.
+4. Add the post's URL to `sitemap.xml`.
+5. Commit and push — GitHub Pages redeploys automatically.
 
 ## Local preview
 
